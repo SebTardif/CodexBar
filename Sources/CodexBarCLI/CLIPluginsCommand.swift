@@ -96,7 +96,6 @@ extension CodexBarCLI {
                     }
                 }
             }
-            fflush(stdout)
         } catch {
             Self.exit(code: .failure, message: error.localizedDescription, kind: .provider)
         }
