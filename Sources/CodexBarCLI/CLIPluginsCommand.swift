@@ -18,6 +18,9 @@ struct PluginFetchOptions: CommanderParsable {
 
     @Flag(name: .long("pretty"), help: "Pretty-print JSON output")
     var pretty: Bool = false
+
+    @Option(name: .long("times"), help: "Fetch this many times, then rescan installed plugins (default 1)")
+    var times: Int = 1
 }
 
 extension CodexBarCLI {
@@ -40,25 +43,27 @@ extension CodexBarCLI {
 
     private static func fetchPlugin(values: ParsedValues) async {
         guard let rawID = values.positional.first,
-              let instanceID = ProviderInstanceID(rawValue: rawID),
-              let plugin = UserProviderPluginRegistry.plugin(for: instanceID)
+              let instanceID = ProviderInstanceID(rawValue: rawID)
         else {
             exit(code: .failure, message: "Plugin was not found", kind: .args)
         }
-        guard plugin.manifest.capabilities.contains(.browserCookies) == false else {
-            Self.exit(
-                code: .failure,
-                message: "Browser-cookie plugins are supported by the macOS app only; CLI access fails closed.",
-                kind: .provider)
-        }
-
         let output = CLIOutputPreferences.from(values: values)
         let config = Self.loadConfig(output: output)
         let pluginConfig = config.providerConfig(for: instanceID)
         let settings = pluginConfig?.pluginSettings ?? [:]
         let secrets = pluginConfig?.pluginSecrets ?? [:]
         let approvalStore = ProviderPluginApprovalStore()
+        let times = Self.pluginFetchTimes(values)
         do {
+            guard let plugin = UserProviderPluginRegistry.plugin(for: instanceID) else {
+                Self.exit(code: .failure, message: "Plugin was not found", kind: .args)
+            }
+            guard plugin.manifest.capabilities.contains(.browserCookies) == false else {
+                Self.exit(
+                    code: .failure,
+                    message: "Browser-cookie plugins are supported by the macOS app only; CLI access fails closed.",
+                    kind: .provider)
+            }
             let binding = try plugin.approvalBinding(settings: settings)
             if !approvalStore.isApproved(binding) {
                 guard Self.isInteractiveTerminal else {
@@ -69,29 +74,58 @@ extension CodexBarCLI {
                 }
                 try approvalStore.record(binding)
             }
-            let snapshot = try await plugin.fetchUsage(
-                settings: settings,
-                secrets: secrets,
-                approvalStore: approvalStore)
-            if values.flags.contains("json") {
-                let encoder = JSONEncoder()
-                encoder.dateEncodingStrategy = .iso8601
-                if values.flags.contains("pretty") {
-                    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-                }
-                let data = try encoder.encode(snapshot)
-                guard let json = String(data: data, encoding: .utf8) else {
-                    throw ProviderPluginError.load("could not encode plugin snapshot as UTF-8")
-                }
-                print(json)
-            } else {
-                for line in self.pluginSnapshotLines(plugin: plugin, snapshot: snapshot) {
-                    print(line)
+            for _ in 0..<times {
+                let snapshot = try await plugin.fetchUsage(
+                    settings: settings,
+                    secrets: secrets,
+                    approvalStore: approvalStore)
+                if values.flags.contains("json") {
+                    let encoder = JSONEncoder()
+                    encoder.dateEncodingStrategy = .iso8601
+                    if values.flags.contains("pretty") {
+                        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                    }
+                    let data = try encoder.encode(snapshot)
+                    guard let json = String(data: data, encoding: .utf8) else {
+                        throw ProviderPluginError.load("could not encode plugin snapshot as UTF-8")
+                    }
+                    print(json)
+                } else {
+                    for line in self.pluginSnapshotLines(plugin: plugin, snapshot: snapshot) {
+                        print(line)
+                    }
                 }
             }
+            fflush(stdout)
         } catch {
             Self.exit(code: .failure, message: error.localizedDescription, kind: .provider)
         }
+        // The startup refresh already loaded this process's plugins. A repeated fetch
+        // then rescans, which is the CLI form of opening plugin discovery again.
+        if times > 1 {
+            UserProviderPluginRegistry.refresh()
+            Self.settlePluginFetchIfRequested()
+        }
+    }
+
+    /// Keeps this process running after a rescan so a sampler can observe CFNetwork
+    /// session teardown. Unset in normal use.
+    private static func settlePluginFetchIfRequested() {
+        guard let raw = ProcessInfo.processInfo.environment["CODEXBAR_PLUGIN_FETCH_SETTLE_SECONDS"],
+              let seconds = TimeInterval(raw), seconds > 0, seconds <= 90
+        else { return }
+        let deadline = Date().addingTimeInterval(seconds)
+        while Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+    }
+
+    private static func pluginFetchTimes(_ values: ParsedValues) -> Int {
+        guard let raw = values.options["times"]?.last else { return 1 }
+        guard let times = Int(raw), (1...10).contains(times) else {
+            Self.exit(code: .failure, message: "--times must be an integer from 1 to 10", kind: .args)
+        }
+        return times
     }
 
     private static var isInteractiveTerminal: Bool {
