@@ -24,11 +24,10 @@ extension CodexBarCLI {
 
         Usage:
           codexbar plugins list
-          codexbar plugins fetch <id> [--times <n>] [--json] [--pretty]
+          codexbar plugins fetch <id> [--json] [--pretty]
 
         Description:
-          Discover local .js and .ts provider plugins. --times greater than 1 fetches that many times
-          and then rescans installed plugins. Fetch requires a recorded approval binding.
+          Discover local .js and .ts provider plugins. Fetch requires a recorded approval binding.
           An interactive terminal can create the approval after showing exact origins, capabilities,
           secret names, and cookie domains. Headless use fails closed. Browser-cookie plugins are
           app-only and fail closed in the CLI.

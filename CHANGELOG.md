@@ -4,7 +4,6 @@
 
 ### Added
 
-- CLI: `plugins fetch --times` repeats a user-plugin fetch and then rescans installed plugins (#4584). Thanks @SebTardif!
 - Providers: add Future AGI billing-period usage and free allowances with an API-key pair, including AI credits, gateway requests, and estimated usage cost (#4560). Thanks @spencer-shadley!
 - CLI: opt-in `"shareUsageWithCLI"` lets SSH `codexbar usage`/`cards` fall back to the app's cached rate windows (with `source: codexbar-app` and `ageSeconds`) when a fetch fails on a locked keychain (#4554). Thanks @mjaverto!
 - Settings: offer a six-day Monday–Saturday work week for weekly pace and session forecasts (#4548). Thanks @ViaxCo!
