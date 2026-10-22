@@ -267,7 +267,8 @@ public final class UserProviderPluginLoader: @unchecked Sendable {
     {
         self.providersDirectory = providersDirectory
         self.cacheDirectory = cacheDirectory
-        self.transport = transport ?? UserProviderPluginHTTPTransport.make()
+        self.transport = transport ?? UserProviderPluginHTTPClient(
+            maximumResponseBytes: UserProviderPlugin.maximumSourceBytes)
         self.resourceBundle = resourceBundle
         self.storageDirectory = storageDirectory
     }
@@ -494,12 +495,6 @@ public enum UserProviderPluginManager {
                 try FileManager.default.removeItem(at: historyURL)
             }
         }
-    }
-}
-
-private enum UserProviderPluginHTTPTransport {
-    static func make() -> any ProviderHTTPTransport {
-        UserProviderPluginHTTPClient(maximumResponseBytes: UserProviderPlugin.maximumSourceBytes)
     }
 }
 
